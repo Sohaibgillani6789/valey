@@ -1,9 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
 
-*
-{
+* {
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    position: fixed;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+    background-color: #262837;
 }
 
 .loader-container {
@@ -28,12 +39,6 @@
     height: 1px;
     background-color: white;
     transition: width 0.5s ease-out;
-}
-
-html,
-body
-{
-    overflow: hidden;
 }
 
 .quote-container {
@@ -85,12 +90,25 @@ body
     }
 }
 
-.webgl
-{
+.webgl {
     position: fixed;
     top: 0;
     left: 0;
     outline: none;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+}
+
+/* Ensure proper fullscreen display */
+:fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+:-webkit-full-screen {
+    width: 100vw !important;
+    height: 100vh !important;
 }
 
 .play-button {
@@ -117,4 +135,76 @@ body
 .play-button svg {
     width: 24px;
     height: 24px;
+}
+
+.lil-gui {
+  --background-color: #111;   /* Dark background */
+  --title-background-color: #222;
+  --title-text-color: rgb(238, 194, 0);   /* Neon cyan */
+  --text-color: #eee;
+  --hover-color: rgb(189, 138, 0);
+  --widget-color: #333;
+  --slider-background-color: #ff8a05;
+  --slider-knob-color: rgb(255, 60, 46);
+  border-radius: 12px;
+  font-family: 'Poppins', sans-serif;
+  box-shadow: 0 0 20px rgba(38, 0, 255, 0.2);
+}
+
+/* Update Orientation Prompt Styles */
+.orientation-prompt {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+    z-index: 10000;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+    cursor: pointer; /* Add cursor pointer to indicate clickable */
+    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+}
+
+.orientation-prompt.visible {
+    display: flex;
+}
+
+.orientation-prompt:active {
+    background-color: #1a1a1a; 
+}
+
+.orientation-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 20px;
+    animation: rotate 2s infinite;
+}
+
+.orientation-text {
+    font-size: 1.2em;
+    margin: 10px 20px;
+}
+
+@keyframes rotate {
+    0% {
+        transform: rotate(0deg);
+    }
+    50% {
+        transform: rotate(-90deg);
+    }
+    100% {
+        transform: rotate(0deg);
+    }
+}
+
+/* Only show orientation prompt on mobile devices */
+@media (min-width: 768px) {
+    .orientation-prompt {
+        display: none !important;
+    }
 }

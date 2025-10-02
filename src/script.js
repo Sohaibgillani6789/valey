@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import Stats from 'three/examples/jsm/libs/stats.module.js'
 import GUI from 'lil-gui'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -17,17 +18,26 @@ import flowerFragmentShader from './shaders/flowerFragment.glsl';
 
 
 
-// Loading Manager
+// First, let's create a Promise-based asset loader
+const loadingPromises = [];
+
+// Loading Manager modification
 const loadingManager = new THREE.LoadingManager(
     // Loaded
     () => {
-        window.setTimeout(() => {
-            const loaderContainer = document.querySelector('.loader-container');
-            loaderContainer.style.opacity = '0';
-            setTimeout(() => {
-                loaderContainer.style.display = 'none';
+        Promise.all(loadingPromises).then(() => {
+            window.setTimeout(() => {
+                const loaderContainer = document.querySelector('.loader-container');
+                loaderContainer.style.opacity = '0';
+                setTimeout(() => {
+                    loaderContainer.style.display = 'none';
+                    // Start camera animation after loader disappears
+                    cameraAnimation.active = true;
+                    cameraAnimation.startTime = Date.now();
+                    goFullscreen(); // Request fullscreen when animation starts
+                }, 500);
             }, 500);
-        }, 500);
+        });
     },
     // Progress
     (itemUrl, itemsLoaded, itemsTotal) => {
@@ -248,145 +258,173 @@ const lightUniforms = {
     uLightDirection: { value: light.position.clone().normalize() } 
 };
 
-const mtlLoader = new MTLLoader();
-mtlLoader.setPath('/models/maps/');
-mtlLoader.setMaterialOptions({
-    side: THREE.DoubleSide,
-    wrap: THREE.RepeatWrapping,
-    normalizeRGB: true,
-    invertTrProperty: true,
-    ignoreZeroRGBs: false,
-    multiplier: 1.0
-});
+// Move house loading into a function and add to promises
+function loadHouseModel() {
+    return new Promise((resolve, reject) => {
+        const houseMtlLoader = new MTLLoader(loadingManager);
+        houseMtlLoader.setPath('/models/house/');
+        houseMtlLoader.load('cottage_obj.mtl', (materials) => {
+            materials.preload();
+            const houseObjLoader = new OBJLoader(loadingManager);
+            houseObjLoader.setMaterials(materials);
+            houseObjLoader.setPath('/models/house/');
+            houseObjLoader.load('cottage_obj.obj', (obj) => {
+                const scaleFactor = 0.4;
+                obj.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                obj.position.set(0, 0, 4);
+                obj.rotation.y = Math.PI * 0.8;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+                house.add(obj);
+                console.log('✅ House OBJ added to scene');
+                resolve();
+            },
+            undefined,
+            reject);
+        },
+        undefined,
+        reject);
+    });
+}
 
-console.log('Loading MTL file...');
-mtlLoader.load('anemone_hybrida.mtl', (materials) => {
-    console.log('MTL loaded:', materials);
-    materials.preload();
+// Move flower loading into a function and add to promises
+function loadFlowerModel() {
+    return new Promise((resolve, reject) => {
+        const mtlLoader = new MTLLoader(loadingManager);
+        mtlLoader.setPath('/models/maps/');
+        mtlLoader.setMaterialOptions({
+            side: THREE.DoubleSide,
+            wrap: THREE.RepeatWrapping,
+            normalizeRGB: true,
+            invertTrProperty: true,
+            ignoreZeroRGBs: false,
+            multiplier: 1.0
+        });
 
-    const objLoader = new OBJLoader();
-    objLoader.setMaterials(materials);
-    objLoader.setPath('/models/maps/');
-    
-    console.log('Loading OBJ file...');
-    objLoader.load('anemone_hybrida.obj', (obj) => {
-        console.log('OBJ loaded:', obj);
+        mtlLoader.load('anemone_hybrida.mtl', (materials) => {
+            materials.preload();
+            const objLoader = new OBJLoader(loadingManager);
+            objLoader.setMaterials(materials);
+            objLoader.setPath('/models/maps/');
+            
+            objLoader.load('anemone_hybrida.obj', (obj) => {
+                console.log('OBJ loaded:', obj);
         
-        // Store a reference to the created shader materials to reuse them for clones
-        const baseShaderMaterials = new Map(); 
-
-        // Process each mesh in the loaded object
-        obj.traverse((child) => {
-            if (child.isMesh) {
-                console.log('Processing mesh:', child.name);
-                
-                // Handle both single material and material array cases
-                const meshMaterials = Array.isArray(child.material) ? child.material : [child.material];
-                
-                // Process each material on the mesh
-                meshMaterials.forEach((material, index) => {
-                    try {
-                        console.log(`Processing material ${index}:`, {
-                            hasMap: !!material.map,
-                            name: material.name || `material_${index}`,
-                            color: material.color ? material.color.getHexString() : 'none'
+                // Store a reference to the created shader materials to reuse them for clones
+                const baseShaderMaterials = new Map(); 
+        
+                // Process each mesh in the loaded object
+                obj.traverse((child) => {
+                    if (child.isMesh) {
+                        console.log('Processing mesh:', child.name);
+                        
+                        // Handle both single material and material array cases
+                        const meshMaterials = Array.isArray(child.material) ? child.material : [child.material];
+                        
+                        // Process each material on the mesh
+                        meshMaterials.forEach((material, index) => {
+                            try {
+                                console.log(`Processing material ${index}:`, {
+                                    hasMap: !!material.map,
+                                    name: material.name || `material_${index}`,
+                                    color: material.color ? material.color.getHexString() : 'none'
+                                });
+        
+                                // Create new shader material
+                                const shaderMaterial = new THREE.ShaderMaterial({
+                                    vertexShader: flowerVertexShader,
+                                    fragmentShader: flowerFragmentShader,
+                                    uniforms: {
+                                        ...flowerUniforms,
+                                        ...lightUniforms,
+                                        uMap: { value: material.map || null },
+                                        uBaseColor: { value: material.color || new THREE.Color(0xffffff) }
+                                    },
+                                    transparent: true,
+                                    side: THREE.DoubleSide
+                                });
+        
+                                // Store for reuse
+                                const materialKey = material.name || `${child.name}_material_${index}`;
+                                baseShaderMaterials.set(materialKey, shaderMaterial);
+        
+                                // Apply the material
+                                if (Array.isArray(child.material)) {
+                                    child.material[index] = shaderMaterial;
+                                } else {
+                                    child.material = shaderMaterial;
+                                }
+        
+                                console.log(`Successfully applied shader material ${materialKey}`);
+                            } catch (error) {
+                                console.error(`Error processing material ${index}:`, error);
+                            }
                         });
-
-                        // Create new shader material
-                        const shaderMaterial = new THREE.ShaderMaterial({
-                            vertexShader: flowerVertexShader,
-                            fragmentShader: flowerFragmentShader,
-                            uniforms: {
-                                ...flowerUniforms,
-                                ...lightUniforms,
-                                uMap: { value: material.map || null },
-                                uBaseColor: { value: material.color || new THREE.Color(0xffffff) }
-                            },
-                            transparent: true,
-                            side: THREE.DoubleSide
-                        });
-
-                        // Store for reuse
-                        const materialKey = material.name || `${child.name}_material_${index}`;
-                        baseShaderMaterials.set(materialKey, shaderMaterial);
-
-                        // Apply the material
-                        if (Array.isArray(child.material)) {
-                            child.material[index] = shaderMaterial;
-                        } else {
-                            child.material = shaderMaterial;
-                        }
-
-                        console.log(`Successfully applied shader material ${materialKey}`);
-                    } catch (error) {
-                        console.error(`Error processing material ${index}:`, error);
                     }
                 });
-            }
-        });
-
-        // Setup base flower position and scale
-        obj.scale.set(3, 5, 5);
-        obj.position.set(24, 0, -3);
-        obj.rotation.y = -Math.PI / 18;
-        scene.add(obj);
-
-        // Create clones with proper material references
-        const clone = obj.clone(true);
-        clone.traverse((child) => {
-            if (child.isMesh) {
-                if (Array.isArray(child.material)) {
-                    child.material = child.material.map((mat, index) => {
-                        const key = mat.name || `${child.name}_material_${index}`;
-                        return baseShaderMaterials.get(key) || mat;
-                    });
-                } else {
-                    const key = child.material.name || `${child.name}_material_0`;
-                    if (baseShaderMaterials.has(key)) {
-                        child.material = baseShaderMaterials.get(key);
+        
+                // Setup base flower position and scale
+                obj.scale.set(3, 5, 5);
+                obj.position.set(24, 0, -3);
+                obj.rotation.y = -Math.PI / 18;
+                scene.add(obj);
+        
+                // Create clones with proper material references
+                const clone = obj.clone(true);
+                clone.traverse((child) => {
+                    if (child.isMesh) {
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map((mat, index) => {
+                                const key = mat.name || `${child.name}_material_${index}`;
+                                return baseShaderMaterials.get(key) || mat;
+                            });
+                        } else {
+                            const key = child.material.name || `${child.name}_material_0`;
+                            if (baseShaderMaterials.has(key)) {
+                                child.material = baseShaderMaterials.get(key);
+                            }
+                        }
                     }
-                }
-            }
-        });
-
-        clone.position.set(24, 0, -2);
-        clone.rotation.x = -Math.PI / 4;
-        scene.add(clone);
-
-        // Create second clone
-        const clone2 = obj.clone(true);
-        clone2.traverse((child) => {
-            if (child.isMesh) {
-                if (Array.isArray(child.material)) {
-                    child.material = child.material.map((mat, index) => {
-                        const key = mat.name || `${child.name}_material_${index}`;
-                        return baseShaderMaterials.get(key) || mat;
-                    });
-                } else {
-                    const key = child.material.name || `${child.name}_material_0`;
-                    if (baseShaderMaterials.has(key)) {
-                        child.material = baseShaderMaterials.get(key);
+                });
+        
+                clone.position.set(24, 0, -2);
+                clone.rotation.x = -Math.PI / 4;
+                scene.add(clone);
+        
+                // Create second clone
+                const clone2 = obj.clone(true);
+                clone2.traverse((child) => {
+                    if (child.isMesh) {
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map((mat, index) => {
+                                const key = mat.name || `${child.name}_material_${index}`;
+                                return baseShaderMaterials.get(key) || mat;
+                            });
+                        } else {
+                            const key = child.material.name || `${child.name}_material_0`;
+                            if (baseShaderMaterials.has(key)) {
+                                child.material = baseShaderMaterials.get(key);
+                            }
+                        }
                     }
-                }
-            }
-        });
-        clone2.position.set(24, 0, -1);
-                clone.rotation.y = -Math.PI / 6;
-
-        scene.add(clone2);
-    }, 
-    (xhr) => {
-        console.log('Loading progress:', (xhr.loaded / xhr.total * 100) + '% loaded');
-    },
-    (error) => {
-        console.error('Error loading OBJ:', error);
+                });
+                clone2.position.set(24, 0, -1);
+                        clone.rotation.y = -Math.PI / 6;
+        
+                scene.add(clone2);
+                resolve();
+            }, 
+            undefined,
+            reject);
+        }, 
+        undefined,
+        reject);
     });
-}, 
-undefined,
-(error) => {
-    console.error('Error loading MTL:', error);
-});
+}
 
+// Add model loading promises to the array
+loadingPromises.push(loadHouseModel());
+loadingPromises.push(loadFlowerModel());
 
 
 // --- IMPROVED FLOWER GEOMETRY GENERATION - REALISTIC SIZES AND DISTRIBUTION ---
@@ -409,7 +447,17 @@ function animateGrass() {
 
 // Debug
 const gui = new GUI();
-gui.hide();
+// gui.hide();
+
+// // Add Stats after GUI initialization
+// const stats = new Stats()
+// stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
+// document.body.appendChild(stats.dom)
+// // Position the stats panel in top-right corner
+// stats.dom.style.position = 'absolute'
+// stats.dom.style.right = '0px'
+// stats.dom.style.left = 'auto'
+
 // Canvas
 const canvas = document.querySelector('canvas.webgl');
 
@@ -514,14 +562,13 @@ scene.add(mountainMesh);
  * Textures
  */
 
-const doorColorTexture = textureLoader.load('/textures/door/color.jpg')
-doorColorTexture.colorSpace = THREE.SRGBColorSpace
-const doorAlphaTexture = textureLoader.load('/textures/door/alpha.jpg')
-const doorAmbientOcclusionTexture = textureLoader.load('/textures/door/ambientOcclusion.jpg')
-const doorHeightTexture = textureLoader.load('/textures/door/height.jpg')
-const doorNormalTexture = textureLoader.load('/textures/door/normal.jpg')
-const doorMetalnessTexture = textureLoader.load('/textures/door/metalness.jpg')
-const doorRoughnessTexture = textureLoader.load('/textures/door/roughness.jpg')
+// const doorColorTexture = textureLoader.load('/textures/door/color.jpg')
+// const doorAlphaTexture = textureLoader.load('/textures/door/alpha.jpg')
+// const doorAmbientOcclusionTexture = textureLoader.load('/textures/door/ambientOcclusion.jpg')
+// const doorHeightTexture = textureLoader.load('/textures/door/height.jpg')
+// const doorNormalTexture = textureLoader.load('/textures/door/normal.jpg')
+// const doorMetalnessTexture = textureLoader.load('/textures/door/metalness.jpg')
+// const doorRoughnessTexture = textureLoader.load('/textures/door/roughness.jpg')
 
 
 // const roofColorTexture = textureLoader.load('/textures/roof/color.jpg')
@@ -548,51 +595,24 @@ const doorRoughnessTexture = textureLoader.load('/textures/door/roughness.jpg')
 const house = new THREE.Group()
 scene.add(house)
 
-// Load house OBJ/MTL model and place in the middle where the walls are
-const houseMtlLoader = new MTLLoader();
-houseMtlLoader.setPath('/models/house/');
-houseMtlLoader.load('cottage_obj.mtl', (materials) => {
-    materials.preload();
-    const houseObjLoader = new OBJLoader();
-    houseObjLoader.setMaterials(materials);
-    houseObjLoader.setPath('/models/house/');
-    houseObjLoader.load('cottage_obj.obj', (obj) => {
-        const scaleFactor = 0.4; // Change this value to adjust the size
-        obj.scale.set(scaleFactor, scaleFactor, scaleFactor);
-        obj.position.set(0, 0, 4); // Centered at origin
-        obj.rotation.y = Math.PI * 0.8; 
-
-        obj.castShadow = true;
-        obj.receiveShadow = true;
-        house.add(obj);
-        console.log('✅ House OBJ added to scene');
-    },
-    undefined,
-    (error) => { console.error('❌ Error loading house OBJ:', error); });
-},
-undefined,
-(error) => { console.error('❌ Error loading house MTL:', error); });
-
-
-
-// Door
-const door = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.2, 2.2, 100, 100),
-    new THREE.MeshStandardMaterial({
-        map: doorColorTexture,
-        transparent: true,
-        alphaMap: doorAlphaTexture,
-        aoMap: doorAmbientOcclusionTexture,
-        displacementMap: doorHeightTexture,
-        displacementScale: 0.1,
-        normalMap: doorNormalTexture,
-        metalnessMap: doorMetalnessTexture,
-        roughnessMap: doorRoughnessTexture
-    })
-)
-door.position.y = 1
-door.position.z = 5 + 0.01
-house.add(door)
+// // Door
+// const door = new THREE.Mesh(
+//     new THREE.PlaneGeometry(2.2, 2.2, 100, 100),
+//     new THREE.MeshStandardMaterial({
+//         map: doorColorTexture,
+//         transparent: true,
+//         alphaMap: doorAlphaTexture,
+//         aoMap: doorAmbientOcclusionTexture,
+//         displacementMap: doorHeightTexture,
+//         displacementScale: 0.1,
+//         normalMap: doorNormalTexture,
+//         metalnessMap: doorMetalnessTexture,
+//         roughnessMap: doorRoughnessTexture
+//     })
+// )
+// door.position.y = 1
+// door.position.z = 5 + 0.01
+// house.add(door)
 
 
 // //window 
@@ -664,16 +684,16 @@ house.add(door)
 const ambientLight = new THREE.AmbientLight('#b9d5ff', 0.12)
 ambientLight.intensity = 0.176;
 
-gui.add(ambientLight, 'intensity').min(0).max(1).step(0.001)
+// gui.add(ambientLight, 'intensity').min(0).max(1).step(0.001)
 scene.add(ambientLight)
 
 // Directional light
 const moonLight = new THREE.DirectionalLight(0xffffff, 2.6);
 moonLight.position.set(4, 5, - 2)
-gui.add(moonLight, 'intensity').min(0).max(5).step(0.001)
-gui.add(moonLight.position, 'x').min(- 5).max(5).step(0.001)
-gui.add(moonLight.position, 'y').min(- 5).max(5).step(0.001)
-gui.add(moonLight.position, 'z').min(- 5).max(5).step(0.001)
+// gui.add(moonLight, 'intensity').min(0).max(5).step(0.001)
+// gui.add(moonLight.position, 'x').min(- 5).max(5).step(0.001)
+// gui.add(moonLight.position, 'y').min(- 5).max(5).step(0.001)
+// gui.add(moonLight.position, 'z').min(- 5).max(5).step(0.001)
 scene.add(moonLight)
 
 
@@ -715,9 +735,10 @@ window.addEventListener('resize', () =>
     camera.aspect = sizes.width / sizes.height
     camera.updateProjectionMatrix()
 
-    // Update renderer
-    renderer.setSize(sizes.width, sizes.height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Update renderer and composer
+    renderer.setSize(sizes.width, sizes.height);
+    composer.setSize(sizes.width, sizes.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 })
 
 /**
@@ -725,9 +746,9 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
-camera.position.x = 24
-camera.position.y = 3.6
-camera.position.z = -2
+// Calculate initial position at start distance
+const cameraDirection = new THREE.Vector3(24, 3.6, -2).normalize();
+camera.position.copy(cameraDirection.multiplyScalar(17)); // Use startDistance (17) for initial position
 camera.add(listener); // Add audio listener to camera
 scene.add(camera)
 
@@ -742,7 +763,7 @@ controls.enableRotate = false    // Disables rotating the camera (orbiting)
 controls.enableZoom = true  
 
 // Minimum zoom (how close the camera can get to the focus point)
-controls.minDistance = 3; 
+controls.minDistance = 17; 
 
 // Maximum zoom (how far the camera can move away from the focus point)
 controls.maxDistance = 25;
@@ -762,8 +783,8 @@ const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomParams = {
     strength: 0.087,
-    radius: 0.6,
-    threshold: 1
+    radius: 1.386,
+    threshold: 0.545
 };
 const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -773,9 +794,9 @@ const bloomPass = new UnrealBloomPass(
 );
 composer.addPass(bloomPass);
 const bloomFolder = gui.addFolder('Bloom');
-bloomFolder.add(bloomParams, 'strength', 0, 3).onChange(v => bloomPass.strength = v);
-bloomFolder.add(bloomParams, 'radius', 0, 2).onChange(v => bloomPass.radius = v);
-bloomFolder.add(bloomParams, 'threshold', 0, 1).onChange(v => bloomPass.threshold = v);
+bloomFolder.add(bloomParams, 'strength', 0, 0.478).onChange(v => bloomPass.strength = v);
+// bloomFolder.add(bloomParams, 'radius', 0, 2).onChange(v => bloomPass.radius = v);
+// bloomFolder.add(bloomParams, 'threshold', 0, 1).onChange(v => bloomPass.threshold = v);
 bloomFolder.open();
 
 /**
@@ -813,7 +834,31 @@ const clock = new THREE.Clock()
     
 const tick = () =>
 {
+    // stats.begin() // Start measuring
+
     const elapsedTime = clock.getElapsedTime()
+
+    // Camera zoom animation
+    if (cameraAnimation.active) {
+        const now = Date.now();
+        const progress = Math.min((now - cameraAnimation.startTime) / cameraAnimation.duration, 1);
+        
+        // Smoother easing function
+        const eased = -(Math.cos(Math.PI * progress) - 1) / 2; // Sinusoidal ease-in-out
+        
+        // Calculate new camera distance from startDistance to endDistance
+        const newDistance = cameraAnimation.startDistance + 
+            (cameraAnimation.endDistance - cameraAnimation.startDistance) * eased;
+        
+        // Apply new distance while maintaining camera direction
+        const direction = camera.position.clone().normalize();
+        camera.position.copy(direction.multiplyScalar(newDistance));
+        
+        // End animation when complete
+        if (progress === 1) {
+            cameraAnimation.active = false;
+        }
+    }
 
     // Update controls
     controls.update()
@@ -834,10 +879,109 @@ const tick = () =>
 
 
     // Render with post-processing
-    composer.render();
+    composer.render()
+
+    // stats.end() // End measuring
 
     // Call tick again on the next frame
     window.requestAnimationFrame(tick)
 }
+const cameraAnimation = {
+    active: false,
+    startTime: 0,
+    duration: 4000, // Animation duration in ms
+    startDistance: 17, // Starting camera distance (closer)
+    endDistance: 25    // Ending camera distance (farther)
+};
+
+
 
 tick()
+
+// Update goFullscreen function
+async function goFullscreen() {
+    try {
+        const element = document.documentElement;
+        
+        if (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')) {
+            // iOS Safari
+            if (element.webkitEnterFullscreen) {
+                element.webkitEnterFullscreen();
+            }
+        } else {
+            // Other browsers
+            if (element.requestFullscreen) {
+                await element.requestFullscreen();
+            } else if (element.webkitRequestFullscreen) {
+                await element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) {
+                await element.msRequestFullscreen();
+            }
+        }
+    } catch (error) {
+        console.log('Fullscreen request was denied:', error);
+    }
+}
+
+// Update handleOrientation function
+function handleOrientation() {
+    const orientationPrompt = document.querySelector('.orientation-prompt');
+    if (!orientationPrompt) return;
+
+    if (window.innerWidth < 768) {
+        if (window.innerWidth > window.innerHeight) {
+            // Landscape
+            orientationPrompt.classList.remove('visible');
+            
+            // Force re-render at correct resolution
+            setTimeout(() => {
+                // Update sizes
+                sizes.width = window.innerWidth;
+                sizes.height = window.innerHeight;
+                
+                // Update camera
+                camera.aspect = sizes.width / sizes.height;
+                camera.updateProjectionMatrix();
+                
+                // Update renderer and composer
+                renderer.setSize(sizes.width, sizes.height);
+                composer.setSize(sizes.width, sizes.height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                
+                // Request fullscreen after resize
+                goFullscreen();
+            }, 100);
+        } else {
+            // Portrait
+            orientationPrompt.classList.add('visible');
+        }
+    }
+}
+
+// Add orientation change listener with lock
+let orientationChangeInProgress = false;
+window.addEventListener('orientationchange', () => {
+    if (orientationChangeInProgress) return;
+    orientationChangeInProgress = true;
+    
+    setTimeout(() => {
+        handleOrientation();
+        orientationChangeInProgress = false;
+    }, 200);
+});
+
+// Update resize event handler
+window.addEventListener('resize', () => {
+    // Update sizes
+    sizes.width = window.innerWidth;
+    sizes.height = window.innerHeight;
+
+    // Update camera
+    camera.aspect = sizes.width / sizes.height;
+    camera.updateProjectionMatrix();
+
+    // Update renderer and composer
+    renderer.setSize(sizes.width, sizes.height);
+    composer.setSize(sizes.width, sizes.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+});
