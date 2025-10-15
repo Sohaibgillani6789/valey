@@ -31,10 +31,6 @@ const loadingManager = new THREE.LoadingManager(
                 loaderContainer.style.opacity = '0';
                 setTimeout(() => {
                     loaderContainer.style.display = 'none';
-                    // Start camera animation after loader disappears
-                    cameraAnimation.active = true;
-                    cameraAnimation.startTime = Date.now();
-                    goFullscreen(); // Request fullscreen when animation starts
                 }, 500);
             }, 500);
         });
@@ -446,8 +442,10 @@ function animateGrass() {
 
 
 // Debug
-const gui = new GUI();
-// gui.hide();
+const gui = new GUI({ closed: true }); 
+ gui.hide();
+
+
 
 // // Add Stats after GUI initialization
 // const stats = new Stats()
@@ -484,12 +482,10 @@ scene.add(ground);
 
 // --- Starry Sky (Background Sphere) ---
 const skyUniforms = {
-    uSunsetColor: { value: new THREE.Color(0xffd580) }, // warm sunset
-    uZenithColor: { value: new THREE.Color(0x0a1446) },  // deep blue
-
-     // 🌟 NEW UNIFORMS FOR STARS 🌟
-    uTime: { value: 0.1 }, // For animation
-    uStarDensity: { value: 0.01 } // Control how many stars show up (e.g., 0.15 for sparser)
+    uSunsetColor: { value: new THREE.Color(0xffd580) },
+    uZenithColor: { value: new THREE.Color(0x0a1446) },
+    uTime: { value: 0.0 }, // Start at 0
+    uStarDensity: { value: 0.01 }
 };
 const skyMaterial = new THREE.ShaderMaterial({
     vertexShader: starVertexShader,
@@ -794,6 +790,8 @@ const bloomPass = new UnrealBloomPass(
 );
 composer.addPass(bloomPass);
 const bloomFolder = gui.addFolder('Bloom');
+bloomFolder.close();   // ✅ start closed
+
 bloomFolder.add(bloomParams, 'strength', 0, 0.478).onChange(v => bloomPass.strength = v);
 // bloomFolder.add(bloomParams, 'radius', 0, 2).onChange(v => bloomPass.radius = v);
 // bloomFolder.add(bloomParams, 'threshold', 0, 1).onChange(v => bloomPass.threshold = v);
@@ -868,7 +866,7 @@ const tick = () =>
     // Animate grass: scale to ms to match shader
     grassUniforms.iTime.value = elapsedTime * 1000.0;
  // 🌟 Animate stars slowly 🌟
-    skyUniforms.uTime.value = elapsedTime * 0.05 // <-- small speed factor
+    skyUniforms.uTime.value += 0.005;
 
          // 🌸 NEW: Animate Flowers 🌸
     flowerUniforms.uTime.value = elapsedTime;
@@ -898,90 +896,95 @@ const cameraAnimation = {
 
 tick()
 
-// Update goFullscreen function
+// Scene initialization state
+let sceneInitialized = false;
+
+// Fullscreen and scene initialization handling
 async function goFullscreen() {
     try {
         const element = document.documentElement;
+        const options = { navigationUI: 'hide' };
         
-        if (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')) {
-            // iOS Safari
-            if (element.webkitEnterFullscreen) {
-                element.webkitEnterFullscreen();
-            }
-        } else {
-            // Other browsers
-            if (element.requestFullscreen) {
-                await element.requestFullscreen();
-            } else if (element.webkitRequestFullscreen) {
-                await element.webkitRequestFullscreen();
-            } else if (element.msRequestFullscreen) {
-                await element.msRequestFullscreen();
-            }
+        if (element.requestFullscreen) {
+            await element.requestFullscreen(options);
+        } else if (element.webkitRequestFullscreen) {
+            await element.webkitRequestFullscreen();
+        } else if (element.mozRequestFullScreen) {
+            await element.mozRequestFullScreen();
+        } else if (element.msRequestFullscreen) {
+            await element.msRequestFullscreen();
         }
     } catch (error) {
-        console.log('Fullscreen request was denied:', error);
+        console.warn('Fullscreen request failed:', error);
+        // Still initialize scene even if fullscreen fails
+        initializeScene();
     }
 }
 
-// Update handleOrientation function
-function handleOrientation() {
-    const orientationPrompt = document.querySelector('.orientation-prompt');
-    if (!orientationPrompt) return;
-
-    if (window.innerWidth < 768) {
-        if (window.innerWidth > window.innerHeight) {
-            // Landscape
-            orientationPrompt.classList.remove('visible');
-            
-            // Force re-render at correct resolution
-            setTimeout(() => {
-                // Update sizes
-                sizes.width = window.innerWidth;
-                sizes.height = window.innerHeight;
-                
-                // Update camera
-                camera.aspect = sizes.width / sizes.height;
-                camera.updateProjectionMatrix();
-                
-                // Update renderer and composer
-                renderer.setSize(sizes.width, sizes.height);
-                composer.setSize(sizes.width, sizes.height);
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                
-                // Request fullscreen after resize
-                goFullscreen();
-            }, 100);
-        } else {
-            // Portrait
-            orientationPrompt.classList.add('visible');
-        }
-    }
-}
-
-// Add orientation change listener with lock
-let orientationChangeInProgress = false;
-window.addEventListener('orientationchange', () => {
-    if (orientationChangeInProgress) return;
-    orientationChangeInProgress = true;
+function initializeScene() {
+    if (sceneInitialized) return;
     
+    const canvas = document.querySelector('.webgl');
+    const fullscreenContainer = document.querySelector('.fullscreen-container');
+    
+    // Hide fullscreen container and show canvas
+    fullscreenContainer.style.opacity = '0';
     setTimeout(() => {
-        handleOrientation();
-        orientationChangeInProgress = false;
-    }, 200);
-});
+        fullscreenContainer.style.display = 'none';
+        canvas.style.display = 'block';
+        
+        // Start camera animation
+        cameraAnimation.active = true;
+        cameraAnimation.startTime = Date.now();
+        
+        // Trigger any initial animations or state
+        if (sound.buffer && !sound.isPlaying) {
+            sound.play();
+        }
+    }, 500);
+    
+    sceneInitialized = true;
+}
 
-// Update resize event handler
-window.addEventListener('resize', () => {
-    // Update sizes
-    sizes.width = window.innerWidth;
-    sizes.height = window.innerHeight;
+// Orientation logic
+const orientationPrompt = document.querySelector('.orientation-prompt');
+const fullscreenContainerEl = document.querySelector('.fullscreen-container'); // renamed to avoid clash
 
-    // Update camera
-    camera.aspect = sizes.width / sizes.height;
-    camera.updateProjectionMatrix();
+function checkOrientation() {
+    if (window.innerHeight > window.innerWidth) {
+        // Portrait → show orientation prompt
+        orientationPrompt.classList.add('visible');
+        fullscreenContainerEl.style.display = 'none';
+    } else {
+        // Landscape → hide prompt & show "Enter Experience"
+        orientationPrompt.classList.remove('visible');
+        fullscreenContainerEl.style.display = 'flex';
+    }
+}
 
-    // Update renderer and composer
-    renderer.setSize(sizes.width, sizes.height);
-    composer.setSize(sizes.width, sizes.height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', checkOrientation);
+checkOrientation(); // run once at start
+
+fullscreenContainerEl.querySelector('.fullscreen-btn').addEventListener('click', async () => {
+    try {
+        const element = document.documentElement;
+        if (element.requestFullscreen) {
+            await element.requestFullscreen({ navigationUI: 'hide' });
+        } else if (element.webkitRequestFullscreen) {
+            await element.webkitRequestFullscreen();
+        }
+    } catch (error) {
+        console.warn('Fullscreen request failed:', error);
+    }
+
+    // Hide container, show scene
+    fullscreenContainerEl.style.opacity = '0';
+    setTimeout(() => {
+        fullscreenContainerEl.style.display = 'none';
+        document.querySelector('.webgl').style.display = 'block';
+
+        cameraAnimation.active = true;
+        cameraAnimation.startTime = Date.now();
+    }, 500);
 });

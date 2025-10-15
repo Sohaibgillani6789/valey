@@ -14,7 +14,7 @@ body {
     position: fixed;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: none;
-    background-color: #262837;
+    background-color: #000000;
 }
 
 .loader-container {
@@ -42,21 +42,27 @@ body {
 }
 
 .quote-container {
-    font-size: xx-small;
     position: fixed;
-    top: 24%;
-    left: 87%;
+    bottom: 2px;              /* 2px margin from bottom */
+    left: 50%;                /* center horizontally */
+    transform: translateX(-50%); /* adjust back by 50% of its width */
     text-align: center;
     color: white;
     z-index: 1000;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    width: 100%;              /* span full width */
+    display: flex;
+    justify-content: center;  /* center content in line */
+    align-items: center;
+    padding: 0 10px;          /* optional padding so text doesn’t touch edges */
+    box-sizing: border-box;
 }
 
 .quote-text {
     font-family: 'Great Vibes', cursive;
-    font-size: 4em;
+    font-size: 2em;  /* adjust for readability */
     line-height: 1.2;
-    white-space: pre-line;
+    white-space: nowrap; /* force it on a single line */
 }
 
 /* Responsive adjustments */
@@ -88,6 +94,47 @@ body {
     .quote-text {
         font-size: 2em;
     }
+}
+
+.fullscreen-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.fullscreen-btn {
+    padding: 15px 30px;
+    font-size: 1.2em;
+    background: #000000;
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.fullscreen-btn:hover {
+    background: #1a1a1a;
+    border-color: white;
+    transform: scale(1.05);
+}
+
+.fullscreen-btn:focus {
+    outline: none;
+}
+
+.webgl {
+    display: none; /* Initially hide the canvas */
 }
 
 .webgl {
@@ -151,7 +198,7 @@ body {
   box-shadow: 0 0 20px rgba(38, 0, 255, 0.2);
 }
 
-/* Update Orientation Prompt Styles */
+/* Orientation Prompt */
 .orientation-prompt {
     position: fixed;
     top: 0;
@@ -160,51 +207,44 @@ body {
     height: 100%;
     background-color: #000000;
     z-index: 10000;
-    display: none;
-    flex-direction: column;
+    display: flex;
     justify-content: center;
     align-items: center;
+    flex-direction: column;
     color: white;
+    font-family: Arial, sans-serif;
     text-align: center;
-    cursor: pointer; /* Add cursor pointer to indicate clickable */
-    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    pointer-events: none; /* Prevent blocking clicks when hidden */
 }
 
 .orientation-prompt.visible {
-    display: flex;
-}
-
-.orientation-prompt:active {
-    background-color: #1a1a1a; 
+    opacity: 1;
+    pointer-events: auto; /* Allow interaction when shown */
 }
 
 .orientation-icon {
-    width: 64px;
-    height: 64px;
+    width: 100px;
+    height: 100px;
     margin-bottom: 20px;
-    animation: rotate 2s infinite;
+    animation: rotate 2s infinite linear;
 }
 
 .orientation-text {
+    margin-top: 20px;
     font-size: 1.2em;
-    margin: 10px 20px;
+    letter-spacing: 1px;
 }
 
-@keyframes rotate {
-    0% {
-        transform: rotate(0deg);
-    }
-    50% {
-        transform: rotate(-90deg);
-    }
-    100% {
-        transform: rotate(0deg);
-    }
-}
-
-/* Only show orientation prompt on mobile devices */
+/* Only show on mobile devices */
 @media (min-width: 768px) {
     .orientation-prompt {
         display: none !important;
     }
+}
+
+@keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
