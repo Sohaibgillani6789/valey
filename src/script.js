@@ -254,34 +254,7 @@ const lightUniforms = {
     uLightDirection: { value: light.position.clone().normalize() } 
 };
 
-// Move house loading into a function and add to promises
-function loadHouseModel() {
-    return new Promise((resolve, reject) => {
-        const houseMtlLoader = new MTLLoader(loadingManager);
-        houseMtlLoader.setPath('/models/house/');
-        houseMtlLoader.load('cottage_obj.mtl', (materials) => {
-            materials.preload();
-            const houseObjLoader = new OBJLoader(loadingManager);
-            houseObjLoader.setMaterials(materials);
-            houseObjLoader.setPath('/models/house/');
-            houseObjLoader.load('cottage_obj.obj', (obj) => {
-                const scaleFactor = 0.4;
-                obj.scale.set(scaleFactor, scaleFactor, scaleFactor);
-                obj.position.set(0, 0, 4);
-                obj.rotation.y = Math.PI * 0.8;
-                obj.castShadow = true;
-                obj.receiveShadow = true;
-                house.add(obj);
-                console.log('✅ House OBJ added to scene');
-                resolve();
-            },
-            undefined,
-            reject);
-        },
-        undefined,
-        reject);
-    });
-}
+
 
 // Move flower loading into a function and add to promises
 function loadFlowerModel() {
@@ -429,32 +402,20 @@ loadingPromises.push(loadFlowerModel());
 
 
 
-// Animation loop for grass (optional: comment out if using your main tick loop)
-function animateGrass() {
-    const elapsedTime = Date.now() - startTime;
-    controls.update();
-    window.requestAnimationFrame(animateGrass);
-    renderer.render(scene, camera);
-}
- //animateGrass();
+// // Animation loop for grass (optional: comment out if using your main tick loop)
+// function animateGrass() {
+//     const elapsedTime = Date.now() - startTime;
+//     controls.update();
+//     window.requestAnimationFrame(animateGrass);
+//     renderer.render(scene, camera);
+// }
+//  //animateGrass();
 
  
 
 
-// Debug
-const gui = new GUI({ closed: true }); 
- gui.hide();
 
 
-
-// // Add Stats after GUI initialization
-// const stats = new Stats()
-// stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
-// document.body.appendChild(stats.dom)
-// // Position the stats panel in top-right corner
-// stats.dom.style.position = 'absolute'
-// stats.dom.style.right = '0px'
-// stats.dom.style.left = 'auto'
 
 // Canvas
 const canvas = document.querySelector('canvas.webgl');
@@ -462,8 +423,49 @@ const canvas = document.querySelector('canvas.webgl');
 // Scene
 const scene = new THREE.Scene();
 
+
+// Debug
+const gui = new GUI({ closed: true }); 
+ gui.hide();
+
+// House container
+const house = new THREE.Group()
+scene.add(house)
+
+// Move house loading into a function and add to promises
+function loadHouseModel() {
+    return new Promise((resolve, reject) => {
+        const houseMtlLoader = new MTLLoader(loadingManager);
+        houseMtlLoader.setPath('/models/house/');
+        houseMtlLoader.load('cottage_obj.mtl', (materials) => {
+            materials.preload();
+            const houseObjLoader = new OBJLoader(loadingManager);
+            houseObjLoader.setMaterials(materials);
+            houseObjLoader.setPath('/models/house/');
+            houseObjLoader.load('cottage_obj.obj', (obj) => {
+                const scaleFactor = 0.4;
+                obj.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                obj.position.set(0, 0, 4);
+                obj.rotation.y = Math.PI * 0.8;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+                house.add(obj);
+                console.log('✅ House OBJ added to scene');
+                resolve();
+            },
+            undefined,
+            reject);
+        },
+        undefined,
+        reject);
+    });
+}
+
+
+
 // Generate grass field (after scene is initialized)
 generateField();
+
 
 // --- GENERATE FLOWERS ---
 // (Flower generation removed)
@@ -497,61 +499,139 @@ const skyGeometry = new THREE.SphereGeometry(60, 64, 64);
 const skyMesh = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(skyMesh);
 
-// --- Terrain / Mountains ---
-// Remove old terrain, add distant mountain silhouette
-const grassRadius = 30; // match circle radius
-const mountainSegments = 78;
-const mountainVertices = [];
-const mountainIndices = [];
-const mountainHeights = [];
-const mountainBaseY = 0.05;
-const mountainInnerRadius = grassRadius * 0.91;
-const mountainOuterRadius = grassRadius * 1.18;
+// textures
+const mountainColorTexture = textureLoader.load('/textures/mountain/color.jpg')
+const mountainAmbientOcclusionTexture = textureLoader.load('/textures/mountain/ao.jpg')
+const mountainRoughnessTexture = textureLoader.load('/textures/mountain/roughness.jpg')
+const mountainNormalTexture = textureLoader.load('/textures/mountain/normal.jpg')
+const mountainHeightTexture = textureLoader.load('/textures/mountain/height.jpg')
 
-// Generate mountain ring vertices
-for (let i = 0; i <= mountainSegments; i++) {
-    const theta = (i / mountainSegments) * Math.PI * 2;
-    
-    // ⛰️ MODIFIED LINE FOR GREATER HEIGHT ⛰️
-    // Base height increased from 2 to 10
-    // Amplitude of sin wave increased from 2 to 5
-    // Random height variation increased from 2 to 5
-    const height = 6 + Math.sin(theta * 3) * 5 + Math.random() * 5; 
-    
-    mountainHeights.push(height);
+// --- TEXTURE SETTINGS ---
+mountainColorTexture.wrapS = THREE.ClampToEdgeWrapping;
+mountainColorTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // Outer vertex (mountain peak)
-    const xOuter = Math.cos(theta) * mountainOuterRadius;
-    const yOuter = height + mountainBaseY;
-    const zOuter = Math.sin(theta) * mountainOuterRadius;
-    mountainVertices.push(xOuter, yOuter, zOuter);
+mountainAmbientOcclusionTexture.wrapS = THREE.ClampToEdgeWrapping;
+mountainAmbientOcclusionTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // Inner vertex (base, near grass edge)
-    const xInner = Math.cos(theta) * mountainInnerRadius;
-    const yInner = mountainBaseY;
-    const zInner = Math.sin(theta) * mountainInnerRadius;
-    mountainVertices.push(xInner, yInner, zInner);
+mountainRoughnessTexture.wrapS = THREE.ClampToEdgeWrapping;
+mountainRoughnessTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+mountainNormalTexture.wrapS = THREE.ClampToEdgeWrapping;
+mountainNormalTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+mountainHeightTexture.wrapS = THREE.ClampToEdgeWrapping;
+mountainHeightTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+mountainColorTexture.colorSpace = THREE.SRGBColorSpace;
+
+
+
+
+// --- COMPLETELY NEW APPROACH: Planar Projection ---
+const grassRadius = 30;
+// SIMPLE APPROACH: Create individual mountains
+// ALTERNATIVE: More natural mountain generation with multiple peaks
+// Seeded random number generator for consistent results
+function seededRandom(seed) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
 }
 
-// Generate indices for triangle strip
-for (let i = 0; i < mountainSegments; i++) {
-    const a = i * 2;
-    const b = i * 2 + 1;
-    const c = (i + 1) * 2;
-    const d = (i + 1) * 2 + 1;
-    // Two triangles per segment
-    mountainIndices.push(a, b, c);
-    mountainIndices.push(b, d, c);
-}
+// Use a fixed seed for consistent mountains
+const mountainSeed = 12345;
 
-const mountainGeometry = new THREE.BufferGeometry();
-mountainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(mountainVertices, 3));
-mountainGeometry.setIndex(mountainIndices);
-mountainGeometry.computeVertexNormals();
-const mountainMaterial = new THREE.MeshBasicMaterial({ color: 0x181c2a, side: THREE.DoubleSide });
-const mountainMesh = new THREE.Mesh(mountainGeometry, mountainMaterial);
-mountainMesh.position.y = 0;
-scene.add(mountainMesh);
+const mountainCount = 88;
+const mountains = [];
+
+for (let i = 0; i < mountainCount; i++) {
+    const angle = (i / mountainCount) * Math.PI * 2;
+    const radius = grassRadius * 1.05;
+    
+    // Use seeded random for consistent positioning
+    const rand1 = seededRandom(mountainSeed + i);
+    const rand2 = seededRandom(mountainSeed + i + 1000);
+    
+    // Position with consistent variation
+    const x = Math.cos(angle) * radius + (rand1 - 0.5) * 2;
+    const z = Math.sin(angle) * radius + (rand2 - 0.5) * 2;
+    
+    // Use seeded random for mountain dimensions
+    const rand3 = seededRandom(mountainSeed + i + 2000);
+    const rand4 = seededRandom(mountainSeed + i + 3000);
+    const rand5 = seededRandom(mountainSeed + i + 4000);
+    
+    // Create base cylinder geometry with more segments
+    const segments = 94;
+    const heightSegments = 1;
+    const mountainGeometry = new THREE.CylinderGeometry(
+        2 + rand3 * 2, // Base radius   
+        0.5 + rand4 * 12, // Top radius
+        4.5 + rand5 * 12, // Height
+        segments,
+        heightSegments,
+        true
+    );
+    
+    // Get the position attribute
+    const positionAttribute = mountainGeometry.getAttribute('position');
+    const positions = positionAttribute.array;
+    
+    // Create multiple peaks and ridges with consistent patterns
+    for (let j = 0; j < positions.length; j += 3) {
+        const x = positions[j];
+        const y = positions[j + 1];
+        const z = positions[j + 2];
+        
+        // Only modify upper part of the mountain
+        if (y > 0.2) {
+            const distance = Math.sqrt(x * x + z * z);
+            const angleAround = Math.atan2(z, x);
+            
+            // Use deterministic patterns instead of random
+            const mainPeak = Math.sin(distance * 4) * 0.4;
+            const secondaryPeaks = Math.cos(angleAround * 3) * 0.3;
+            const ridgeEffect = Math.sin(angleAround * 2 + distance * 6) * 0.2;
+            const consistentVariation = (seededRandom(mountainSeed + i + j) - 0.5) * 0.15;
+            
+            const totalHeightVariation = mainPeak + secondaryPeaks + ridgeEffect + consistentVariation;
+            
+            // Apply more variation to higher vertices
+            const heightMultiplier = y * 0.2;
+            positions[j + 1] = y + totalHeightVariation * heightMultiplier;
+        }
+        
+        // Add consistent base roughness
+        if (y > -0.5 && y < 0.5) {
+            const baseRand1 = seededRandom(mountainSeed + i + j + 5000);
+            const baseRand2 = seededRandom(mountainSeed + i + j + 6000);
+            positions[j] += (baseRand1 - 0.5) * 0.1;
+            positions[j + 2] += (baseRand2 - 0.5) * 0.1;
+        }
+    }
+    
+    positionAttribute.needsUpdate = true;
+    mountainGeometry.computeVertexNormals();
+    
+    // Consistent rotation
+    const rotationRand = seededRandom(mountainSeed + i + 7000);
+    mountainGeometry.rotateY(angle + rotationRand * 0.5);
+    mountainGeometry.translate(x, 5, z);
+    
+    // Material
+    const mountainMaterial = new THREE.MeshStandardMaterial({
+        map: mountainColorTexture,
+        aoMap: mountainAmbientOcclusionTexture,
+        roughnessMap: mountainRoughnessTexture,
+        normalMap: mountainNormalTexture,
+        side: THREE.DoubleSide,
+        roughness: 0.9, // Fixed from 5.9 to more reasonable value
+    });
+    
+    const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+    mountain.position.y = -7;
+    scene.add(mountain);
+    mountains.push(mountain);
+}
 
 
 /**
@@ -567,29 +647,22 @@ scene.add(mountainMesh);
 // const doorRoughnessTexture = textureLoader.load('/textures/door/roughness.jpg')
 
 
-// const roofColorTexture = textureLoader.load('/textures/roof/color.jpg')
-// roofColorTexture.colorSpace = THREE.SRGBColorSpace
-// const roofAmbientOcclusionTexture = textureLoader.load('/textures/door/AmbientOclussion.jpg')
-// const roofHeightTexture = textureLoader.load('/textures/roof/height.jpg')
-// const roofNormalTexture = textureLoader.load('/textures/door/normal.jpg')
-// const roofRoughnessTexture = textureLoader.load('/textures/door/roughness.jpg')
 
 
 
 
 // const bricksColorTexture = textureLoader.load('/textures/bricks/color.jpg')
-// bricksColorTexture.colorSpace = THREE.SRGBColorSpace
 // const bricksAmbientOcclusionTexture = textureLoader.load('/textures/bricks/ambientOcclusion.jpg')
 // const bricksNormalTexture = textureLoader.load('/textures/bricks/normal.jpg')
 // const bricksRoughnessTexture = textureLoader.load('/textures/bricks/roughness.jpg')
+// bricksColorTexture.colorSpace = THREE.SRGBColorSpace
+
 
 
 /**
  * House
  */
-// House container
-const house = new THREE.Group()
-scene.add(house)
+
 
 // // Door
 // const door = new THREE.Mesh(
